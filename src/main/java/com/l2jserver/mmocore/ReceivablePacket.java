@@ -37,6 +37,10 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	@Override
 	public abstract void run();
 	
+	public boolean hasRemaining() {
+		return _buf.hasRemaining();
+	}
+	
 	/**
 	 * Reads <B>byte[]</B> from the buffer. <BR>
 	 * Reads as many bytes as the length of the array.
