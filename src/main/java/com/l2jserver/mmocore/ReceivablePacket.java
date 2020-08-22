@@ -1,34 +1,35 @@
-/* This program is free software; you can redistribute it and/or modify
+/*
+ * Copyright © 2004-2020 L2J Server
+ * 
+ * This file is part of L2J Server.
+ * 
+ * L2J Server is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * L2J Server is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ * 
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
- * 02111-1307, USA.
- *
- * http://www.gnu.org/copyleft/gpl.html
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 package com.l2jserver.mmocore;
 
 import java.nio.ByteBuffer;
 
 /**
+ * Abstract reciable packet.
  * @author KenM
  * @param <T>
  */
-public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractPacket<T> implements Runnable
-{
-	NioNetStringBuffer _sbuf;
+public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractPacket<T> implements Runnable {
 	
-	protected ReceivablePacket()
-	{
+	protected NioNetStringBuffer _sbuf;
+	
+	protected ReceivablePacket() {
 		
 	}
 	
@@ -46,21 +47,18 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * Reads as many bytes as the length of the array.
 	 * @param dst : the byte array which will be filled with the data.
 	 */
-	protected final void readB(final byte[] dst)
-	{
+	protected final void readB(byte[] dst) {
 		_buf.get(dst);
 	}
 	
 	/**
 	 * Reads <B>byte[]</B> from the buffer. <BR>
-	 * Reads as many bytes as the given length (len). Starts to fill the
-	 * byte array from the given offset to <B>offset</B> + <B>len</B>.
+	 * Reads as many bytes as the given length (len). Starts to fill the byte array from the given offset to <B>offset</B> + <B>len</B>.
 	 * @param dst : the byte array which will be filled with the data.
 	 * @param offset : starts to fill the byte array from the given offset.
 	 * @param len : the given length of bytes to be read.
 	 */
-	protected final void readB(final byte[] dst, final int offset, final int len)
-	{
+	protected final void readB(byte[] dst, int offset, int len) {
 		_buf.get(dst, offset, len);
 	}
 	
@@ -69,8 +67,7 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * 8bit integer (00)
 	 * @return
 	 */
-	protected final int readC()
-	{
+	protected final int readC() {
 		return _buf.get() & 0xFF;
 	}
 	
@@ -79,8 +76,7 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * 16bit integer (00 00)
 	 * @return
 	 */
-	protected final int readH()
-	{
+	protected final int readH() {
 		return _buf.getShort() & 0xFFFF;
 	}
 	
@@ -89,8 +85,7 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * 32bit integer (00 00 00 00)
 	 * @return
 	 */
-	protected final int readD()
-	{
+	protected final int readD() {
 		return _buf.getInt();
 	}
 	
@@ -99,8 +94,7 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * 64bit integer (00 00 00 00 00 00 00 00)
 	 * @return
 	 */
-	protected final long readQ()
-	{
+	protected final long readQ() {
 		return _buf.getLong();
 	}
 	
@@ -109,8 +103,7 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * 64bit double precision float (00 00 00 00 00 00 00 00)
 	 * @return
 	 */
-	protected final double readF()
-	{
+	protected final double readF() {
 		return _buf.getDouble();
 	}
 	
@@ -118,13 +111,11 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * Reads <B>String</B> from the buffer.
 	 * @return
 	 */
-	protected final String readS()
-	{
+	protected final String readS() {
 		_sbuf.clear();
 		
 		char ch;
-		while ((ch = _buf.getChar()) != 0)
-		{
+		while ((ch = _buf.getChar()) != 0) {
 			_sbuf.append(ch);
 		}
 		
@@ -137,8 +128,7 @@ public abstract class ReceivablePacket<T extends MMOClient<?>> extends AbstractP
 	 * @param client
 	 * @param sBuffer
 	 */
-	public void setBuffers(ByteBuffer data, T client, NioNetStringBuffer sBuffer)
-	{
+	public void setBuffers(ByteBuffer data, T client, NioNetStringBuffer sBuffer) {
 		_buf = data;
 		_client = client;
 		_sbuf = sBuffer;

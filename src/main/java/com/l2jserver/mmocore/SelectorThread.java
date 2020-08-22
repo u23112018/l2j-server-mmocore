@@ -1,21 +1,27 @@
-/* This program is free software; you can redistribute it and/or modify
+/*
+ * Copyright © 2004-2020 L2J Server
+ * 
+ * This file is part of L2J Server.
+ * 
+ * L2J Server is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * L2J Server is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ * 
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
- * 02111-1307, USA.
- *
- * http://www.gnu.org/copyleft/gpl.html
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 package com.l2jserver.mmocore;
+
+import static java.nio.channels.SelectionKey.OP_ACCEPT;
+import static java.nio.channels.SelectionKey.OP_CONNECT;
+import static java.nio.channels.SelectionKey.OP_READ;
+import static java.nio.channels.SelectionKey.OP_WRITE;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -27,17 +33,18 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * Parts of design based on network core from WoodenGil
+ * Selector thread.
  * @param <T>
- * @author KenM, Zoey76
+ * @author WoodenGil
+ * @author KenM
+ * @author Zoey76
  */
-public final class SelectorThread<T extends MMOClient<?>> extends Thread
-{
+public final class SelectorThread<T extends MMOClient<?>> extends Thread {
+	
 	// default BYTE_ORDER
 	private static final ByteOrder BYTE_ORDER = ByteOrder.LITTLE_ENDIAN;
 	// default HEADER_SIZE
@@ -45,10 +52,10 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 	// Selector
 	private final Selector _selector;
 	// Implementations
-	private final IPacketHandler<T> _packetHandler;
-	private final IMMOExecutor<T> _executor;
-	private final IClientFactory<T> _clientFactory;
-	private final IAcceptFilter _acceptFilter;
+	private final PacketHandler<T> _packetHandler;
+	private final MMOExecutor<T> _executor;
+	private final ClientFactory<T> _clientFactory;
+	private final AcceptFilter _acceptFilter;
 	// Configurations
 	private final int HELPER_BUFFER_SIZE;
 	private final int HELPER_BUFFER_COUNT;
@@ -69,8 +76,7 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 	
 	private boolean _shutdown;
 	
-	public SelectorThread(final SelectorConfig sc, final IMMOExecutor<T> executor, final IPacketHandler<T> packetHandler, final IClientFactory<T> clientFactory, final IAcceptFilter acceptFilter) throws IOException
-	{
+	public SelectorThread(SelectorConfig sc, MMOExecutor<T> executor, PacketHandler<T> packetHandler, ClientFactory<T> clientFactory, AcceptFilter acceptFilter) throws IOException {
 		super.setName("SelectorThread-" + super.getId());
 		
 		HELPER_BUFFER_SIZE = sc.HELPER_BUFFER_SIZE;
@@ -89,8 +95,7 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		_pendingClose = new NioNetStackList<>();
 		_bufferPool = new ConcurrentLinkedQueue<>();
 		
-		for (int i = 0; i < HELPER_BUFFER_COUNT; i++)
-		{
+		for (int i = 0; i < HELPER_BUFFER_COUNT; i++) {
 			_bufferPool.add(ByteBuffer.wrap(new byte[HELPER_BUFFER_SIZE]).order(BYTE_ORDER));
 		}
 		
@@ -101,39 +106,31 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		_selector = Selector.open();
 	}
 	
-	public final void openServerSocket(InetAddress address, int tcpPort) throws IOException
-	{
+	public final void openServerSocket(InetAddress address, int tcpPort) throws IOException {
 		ServerSocketChannel selectable = ServerSocketChannel.open();
 		selectable.configureBlocking(false);
 		
 		ServerSocket ss = selectable.socket();
 		
-		if (address == null)
-		{
+		if (address == null) {
 			ss.bind(new InetSocketAddress(tcpPort));
-		}
-		else
-		{
+		} else {
 			ss.bind(new InetSocketAddress(address, tcpPort));
 		}
 		
-		selectable.register(_selector, SelectionKey.OP_ACCEPT);
+		selectable.register(_selector, OP_ACCEPT);
 	}
 	
-	final ByteBuffer getPooledBuffer()
-	{
-		if (_bufferPool.isEmpty())
-		{
+	final ByteBuffer getPooledBuffer() {
+		if (_bufferPool.isEmpty()) {
 			return ByteBuffer.wrap(new byte[HELPER_BUFFER_SIZE]).order(BYTE_ORDER);
 		}
 		
 		return _bufferPool.remove();
 	}
 	
-	final void recycleBuffer(ByteBuffer buf)
-	{
-		if (_bufferPool.size() < HELPER_BUFFER_COUNT)
-		{
+	final void recycleBuffer(ByteBuffer buf) {
+		if (_bufferPool.size() < HELPER_BUFFER_COUNT) {
 			buf.clear();
 			_bufferPool.add(buf);
 		}
@@ -141,179 +138,137 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	public final void run()
-	{
+	public final void run() {
 		int selectedKeysCount = 0;
 		
-		SelectionKey key;
-		MMOConnection<T> con;
-		
-		Iterator<SelectionKey> selectedKeys;
-		
-		while (!_shutdown)
-		{
-			try
-			{
+		while (!_shutdown) {
+			try {
 				selectedKeysCount = _selector.selectNow();
-			}
-			catch (IOException e)
-			{
+			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			
-			if (selectedKeysCount > 0)
-			{
-				selectedKeys = _selector.selectedKeys().iterator();
+			if (selectedKeysCount > 0) {
+				var selectedKeys = _selector.selectedKeys().iterator();
 				
-				while (selectedKeys.hasNext())
-				{
-					key = selectedKeys.next();
+				while (selectedKeys.hasNext()) {
+					SelectionKey key = selectedKeys.next();
 					selectedKeys.remove();
-					
-					con = (MMOConnection<T>) key.attachment();
-					
-					switch (key.readyOps())
-					{
-						case SelectionKey.OP_CONNECT:
+					var con = (MMOConnection<T>) key.attachment();
+					switch (key.readyOps()) {
+						case OP_CONNECT: {
 							finishConnection(key, con);
 							break;
-						case SelectionKey.OP_ACCEPT:
-							acceptConnection(key, con);
+						}
+						case OP_ACCEPT: {
+							acceptConnection(key);
 							break;
-						case SelectionKey.OP_READ:
+						}
+						case OP_READ: {
 							readPacket(key, con);
 							break;
-						case SelectionKey.OP_WRITE:
+						}
+						case OP_WRITE: {
 							writePacket(key, con);
 							break;
-						case SelectionKey.OP_READ | SelectionKey.OP_WRITE:
+						}
+						case OP_READ | OP_WRITE: {
 							writePacket(key, con);
-							if (key.isValid())
-							{
+							if (key.isValid()) {
 								readPacket(key, con);
 							}
 							break;
+						}
 					}
 				}
 			}
 			
-			synchronized (_pendingClose)
-			{
-				while (!_pendingClose.isEmpty())
-				{
-					try
-					{
-						con = _pendingClose.removeFirst();
+			synchronized (_pendingClose) {
+				while (!_pendingClose.isEmpty()) {
+					try {
+						var con = _pendingClose.removeFirst();
 						writeClosePacket(con);
 						closeConnectionImpl(con.getSelectionKey(), con);
-					}
-					catch (Exception e)
-					{
+					} catch (Exception e) {
 						e.printStackTrace();
 					}
 				}
 			}
 			
-			try
-			{
+			try {
 				Thread.sleep(SLEEP_TIME);
-			}
-			catch (InterruptedException e)
-			{
+			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
 		}
 		closeSelectorThread();
 	}
 	
-	private final void finishConnection(final SelectionKey key, final MMOConnection<T> con)
-	{
-		try
-		{
+	private void finishConnection(SelectionKey key, MMOConnection<T> con) {
+		try {
 			((SocketChannel) key.channel()).finishConnect();
-		}
-		catch (IOException e)
-		{
+		} catch (IOException e) {
 			con.getClient().onForcedDisconnection();
 			closeConnectionImpl(key, con);
 		}
 		
 		// key might have been invalidated on finishConnect()
-		if (key.isValid())
-		{
-			key.interestOps(key.interestOps() | SelectionKey.OP_READ);
-			key.interestOps(key.interestOps() & ~SelectionKey.OP_CONNECT);
+		if (key.isValid()) {
+			key.interestOps(key.interestOps() | OP_READ);
+			key.interestOps(key.interestOps() & ~OP_CONNECT);
 		}
 	}
 	
-	private final void acceptConnection(final SelectionKey key, MMOConnection<T> con)
-	{
+	private void acceptConnection(SelectionKey key) {
 		ServerSocketChannel ssc = (ServerSocketChannel) key.channel();
 		SocketChannel sc;
 		
-		try
-		{
-			while ((sc = ssc.accept()) != null)
-			{
-				if ((_acceptFilter == null) || _acceptFilter.accept(sc))
-				{
+		try {
+			while ((sc = ssc.accept()) != null) {
+				if ((_acceptFilter == null) || _acceptFilter.accept(sc)) {
 					sc.configureBlocking(false);
-					SelectionKey clientKey = sc.register(_selector, SelectionKey.OP_READ);
-					con = new MMOConnection<>(this, sc.socket(), clientKey, TCP_NODELAY);
+					SelectionKey clientKey = sc.register(_selector, OP_READ);
+					var con = new MMOConnection<>(this, sc.socket(), clientKey, TCP_NODELAY);
 					con.setClient(_clientFactory.create(con));
 					clientKey.attach(con);
-				}
-				else
-				{
+				} else {
 					sc.socket().close();
 				}
 			}
-		}
-		catch (IOException e)
-		{
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
 	
-	private final void readPacket(final SelectionKey key, final MMOConnection<T> con)
-	{
-		if (!con.isClosed())
-		{
+	private void readPacket(SelectionKey key, MMOConnection<T> con) {
+		if (!con.isClosed()) {
 			ByteBuffer buf;
-			if ((buf = con.getReadBuffer()) == null)
-			{
+			if ((buf = con.getReadBuffer()) == null) {
 				buf = READ_BUFFER;
 			}
 			
 			// if we try to to do a read with no space in the buffer it will
 			// read 0 bytes
 			// going into infinite loop
-			if (buf.position() == buf.limit())
-			{
+			if (buf.position() == buf.limit()) {
 				System.exit(0);
 			}
 			
 			int result = -2;
 			
-			try
-			{
+			try {
 				result = con.read(buf);
-			}
-			catch (IOException e)
-			{
+			} catch (IOException e) {
 				// error handling goes bellow
 			}
 			
-			if (result > 0)
-			{
+			if (result > 0) {
 				buf.flip();
 				
 				final T client = con.getClient();
 				
-				for (int i = 0; i < MAX_READ_PER_PASS; i++)
-				{
-					if (!tryReadPacket(key, client, buf, con))
-					{
+				for (int i = 0; i < MAX_READ_PER_PASS; i++) {
+					if (!tryReadPacket(key, client, buf, con)) {
 						return;
 					}
 				}
@@ -321,58 +276,48 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 				// only reachable if MAX_READ_PER_PASS has been reached
 				// check if there are some more bytes in buffer
 				// and allocate/compact to prevent content lose.
-				if (buf.remaining() > 0)
-				{
+				if (buf.remaining() > 0) {
 					// did we use the READ_BUFFER ?
-					if (buf == READ_BUFFER)
-					{
+					if (buf == READ_BUFFER) {
 						// move the pending byte to the connections READ_BUFFER
 						allocateReadBuffer(con);
-					}
-					else
-					{
+					} else {
 						// move the first byte to the beginning :)
 						buf.compact();
 					}
 				}
-			}
-			else
-			{
-				switch (result)
-				{
+			} else {
+				switch (result) {
 					case 0:
-					case -1:
+					case -1: {
 						closeConnectionImpl(key, con);
 						break;
-					case -2:
+					}
+					case -2: {
 						con.getClient().onForcedDisconnection();
 						closeConnectionImpl(key, con);
 						break;
+					}
 				}
 			}
 		}
 	}
 	
-	private final boolean tryReadPacket(final SelectionKey key, final T client, final ByteBuffer buf, final MMOConnection<T> con)
-	{
-		switch (buf.remaining())
-		{
+	private boolean tryReadPacket(SelectionKey key, T client, ByteBuffer buf, MMOConnection<T> con) {
+		switch (buf.remaining()) {
 			case 0:
 				// buffer is full
 				// nothing to read
 				return false;
 			case 1:
 				// we don`t have enough data for header so we need to read
-				key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+				key.interestOps(key.interestOps() | OP_READ);
 				
 				// did we use the READ_BUFFER ?
-				if (buf == READ_BUFFER)
-				{
+				if (buf == READ_BUFFER) {
 					// move the pending byte to the connections READ_BUFFER
 					allocateReadBuffer(con);
-				}
-				else
-				{
+				} else {
 					// move the first byte to the beginning :)
 					buf.compact();
 				}
@@ -382,26 +327,20 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 				final int dataPending = (buf.getShort() & 0xFFFF) - HEADER_SIZE;
 				
 				// do we got enough bytes for the packet?
-				if (dataPending <= buf.remaining())
-				{
+				if (dataPending <= buf.remaining()) {
 					// avoid parsing dummy packets (packets without body)
-					if (dataPending > 0)
-					{
+					if (dataPending > 0) {
 						final int pos = buf.position();
 						parseClientPacket(pos, buf, dataPending, client);
 						buf.position(pos + dataPending);
 					}
 					
 					// if we are done with this buffer
-					if (!buf.hasRemaining())
-					{
-						if (buf != READ_BUFFER)
-						{
+					if (!buf.hasRemaining()) {
+						if (buf != READ_BUFFER) {
 							con.setReadBuffer(null);
 							recycleBuffer(buf);
-						}
-						else
-						{
+						} else {
 							READ_BUFFER.clear();
 						}
 						return false;
@@ -409,20 +348,16 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 					return true;
 				}
 				
-				// we don`t have enough bytes for the dataPacket so we need
-				// to read
-				key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+				// we don`t have enough bytes for the dataPacket so we need to read
+				key.interestOps(key.interestOps() | OP_READ);
 				
 				// did we use the READ_BUFFER ?
-				if (buf == READ_BUFFER)
-				{
+				if (buf == READ_BUFFER) {
 					// move it`s position
 					buf.position(buf.position() - HEADER_SIZE);
 					// move the pending byte to the connections READ_BUFFER
 					allocateReadBuffer(con);
-				}
-				else
-				{
+				} else {
 					buf.position(buf.position() - HEADER_SIZE);
 					buf.compact();
 				}
@@ -430,31 +365,25 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		}
 	}
 	
-	private final void allocateReadBuffer(final MMOConnection<T> con)
-	{
+	private void allocateReadBuffer(MMOConnection<T> con) {
 		con.setReadBuffer(getPooledBuffer().put(READ_BUFFER));
 		READ_BUFFER.clear();
 	}
 	
-	private final void parseClientPacket(final int pos, final ByteBuffer buf, final int dataSize, final T client)
-	{
+	private void parseClientPacket(int pos, ByteBuffer buf, int dataSize, T client) {
 		final boolean ret = client.decrypt(buf, dataSize);
 		
-		if (ret && buf.hasRemaining())
-		{
+		if (ret && buf.hasRemaining()) {
 			// apply limit
 			final int limit = buf.limit();
 			buf.limit(pos + dataSize);
-			final ReceivablePacket<T> cp = _packetHandler.handlePacket(buf, client);
-			
-			if (cp != null)
-			{
+			final var cp = _packetHandler.handlePacket(buf, client);
+			if (cp != null) {
 				cp._buf = buf;
 				cp._sbuf = STRING_BUFFER;
 				cp._client = client;
 				
-				if (cp.read())
-				{
+				if (cp.read()) {
 					_executor.execute(cp);
 				}
 				
@@ -465,41 +394,32 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		}
 	}
 	
-	private final void writeClosePacket(final MMOConnection<T> con)
-	{
+	private void writeClosePacket(MMOConnection<T> con) {
 		SendablePacket<T> sp;
-		synchronized (con.getSendQueue())
-		{
-			if (con.getSendQueue().isEmpty())
-			{
+		synchronized (con.getSendQueue()) {
+			if (con.getSendQueue().isEmpty()) {
 				return;
 			}
 			
-			while ((sp = con.getSendQueue().removeFirst()) != null)
-			{
+			while ((sp = con.getSendQueue().removeFirst()) != null) {
 				WRITE_BUFFER.clear();
 				
 				putPacketIntoWriteBuffer(con.getClient(), sp);
 				
 				WRITE_BUFFER.flip();
 				
-				try
-				{
+				try {
 					con.write(WRITE_BUFFER);
-				}
-				catch (IOException e)
-				{
+				} catch (IOException e) {
 					// error handling goes on the if bellow
 				}
 			}
 		}
 	}
 	
-	protected final void writePacket(final SelectionKey key, final MMOConnection<T> con)
-	{
-		if (!prepareWriteBuffer(con))
-		{
-			key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+	protected final void writePacket(SelectionKey key, MMOConnection<T> con) {
+		if (!prepareWriteBuffer(con)) {
+			key.interestOps(key.interestOps() & ~OP_WRITE);
 			return;
 		}
 		
@@ -509,77 +429,57 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		
 		int result = -1;
 		
-		try
-		{
+		try {
 			result = con.write(DIRECT_WRITE_BUFFER);
-		}
-		catch (IOException e)
-		{
+		} catch (IOException e) {
 			// error handling goes on the if bellow
 		}
 		
 		// check if no error happened
-		if (result >= 0)
-		{
+		if (result >= 0) {
 			// check if we written everything
-			if (result == size)
-			{
+			if (result == size) {
 				// complete write
-				synchronized (con.getSendQueue())
-				{
-					if (con.getSendQueue().isEmpty() && !con.hasPendingWriteBuffer())
-					{
-						key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+				synchronized (con.getSendQueue()) {
+					if (con.getSendQueue().isEmpty() && !con.hasPendingWriteBuffer()) {
+						key.interestOps(key.interestOps() & ~OP_WRITE);
 					}
 				}
-			}
-			else
-			{
+			} else {
 				// incomplete write
 				con.createWriteBuffer(DIRECT_WRITE_BUFFER);
 			}
-		}
-		else
-		{
+		} else {
 			con.getClient().onForcedDisconnection();
 			closeConnectionImpl(key, con);
 		}
 	}
 	
-	private final boolean prepareWriteBuffer(final MMOConnection<T> con)
-	{
+	private boolean prepareWriteBuffer(MMOConnection<T> con) {
 		boolean hasPending = false;
 		DIRECT_WRITE_BUFFER.clear();
 		
 		// if there is pending content add it
-		if (con.hasPendingWriteBuffer())
-		{
+		if (con.hasPendingWriteBuffer()) {
 			con.movePendingWriteBufferTo(DIRECT_WRITE_BUFFER);
 			hasPending = true;
 		}
 		
-		if ((DIRECT_WRITE_BUFFER.remaining() > 1) && !con.hasPendingWriteBuffer())
-		{
+		if ((DIRECT_WRITE_BUFFER.remaining() > 1) && !con.hasPendingWriteBuffer()) {
 			final NioNetStackList<SendablePacket<T>> sendQueue = con.getSendQueue();
 			final T client = con.getClient();
 			SendablePacket<T> sp;
 			
-			for (int i = 0; i < MAX_SEND_PER_PASS; i++)
-			{
-				synchronized (con.getSendQueue())
-				{
-					if (sendQueue.isEmpty())
-					{
+			for (int i = 0; i < MAX_SEND_PER_PASS; i++) {
+				synchronized (con.getSendQueue()) {
+					if (sendQueue.isEmpty()) {
 						sp = null;
-					}
-					else
-					{
+					} else {
 						sp = sendQueue.removeFirst();
 					}
 				}
 				
-				if (sp == null)
-				{
+				if (sp == null) {
 					break;
 				}
 				
@@ -590,12 +490,9 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 				
 				WRITE_BUFFER.flip();
 				
-				if (DIRECT_WRITE_BUFFER.remaining() >= WRITE_BUFFER.limit())
-				{
+				if (DIRECT_WRITE_BUFFER.remaining() >= WRITE_BUFFER.limit()) {
 					DIRECT_WRITE_BUFFER.put(WRITE_BUFFER);
-				}
-				else
-				{
+				} else {
 					con.createWriteBuffer(WRITE_BUFFER);
 					break;
 				}
@@ -604,8 +501,7 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		return hasPending;
 	}
 	
-	private final void putPacketIntoWriteBuffer(final T client, final SendablePacket<T> sp)
-	{
+	private void putPacketIntoWriteBuffer(T client, SendablePacket<T> sp) {
 		WRITE_BUFFER.clear();
 		
 		// reserve space for the size
@@ -636,34 +532,23 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		WRITE_BUFFER.position(dataPos + dataSize);
 	}
 	
-	final void closeConnection(final MMOConnection<T> con)
-	{
-		synchronized (_pendingClose)
-		{
+	final void closeConnection(MMOConnection<T> con) {
+		synchronized (_pendingClose) {
 			_pendingClose.addLast(con);
 		}
 	}
 	
-	private final void closeConnectionImpl(final SelectionKey key, final MMOConnection<T> con)
-	{
-		try
-		{
+	private void closeConnectionImpl(SelectionKey key, MMOConnection<T> con) {
+		try {
 			// notify connection
 			con.getClient().onDisconnection();
-		}
-		finally
-		{
-			try
-			{
+		} finally {
+			try {
 				// close socket and the SocketChannel
 				con.close();
-			}
-			catch (IOException e)
-			{
+			} catch (IOException e) {
 				// ignore, we are closing anyway
-			}
-			finally
-			{
+			} finally {
 				con.releaseBuffers();
 				// clear attachment
 				key.attach(null);
@@ -673,31 +558,22 @@ public final class SelectorThread<T extends MMOClient<?>> extends Thread
 		}
 	}
 	
-	public final void shutdown()
-	{
+	public final void shutdown() {
 		_shutdown = true;
 	}
 	
-	protected void closeSelectorThread()
-	{
-		for (final SelectionKey key : _selector.keys())
-		{
-			try
-			{
+	protected void closeSelectorThread() {
+		for (final SelectionKey key : _selector.keys()) {
+			try {
 				key.channel().close();
-			}
-			catch (IOException e)
-			{
+			} catch (IOException e) {
 				// ignore
 			}
 		}
 		
-		try
-		{
+		try {
 			_selector.close();
-		}
-		catch (IOException e)
-		{
+		} catch (IOException e) {
 			// Ignore
 		}
 	}

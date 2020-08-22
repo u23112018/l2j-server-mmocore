@@ -1,19 +1,20 @@
-/* This program is free software; you can redistribute it and/or modify
+/*
+ * Copyright © 2004-2020 L2J Server
+ * 
+ * This file is part of L2J Server.
+ * 
+ * L2J Server is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * L2J Server is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ * 
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
- * 02111-1307, USA.
- *
- * http://www.gnu.org/copyleft/gpl.html
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 package com.l2jserver.mmocore;
 
@@ -28,11 +29,12 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.WritableByteChannel;
 
 /**
+ * MMO Connection.
  * @author KenM
  * @param <T>
  */
-public class MMOConnection<T extends MMOClient<?>>
-{
+public class MMOConnection<T extends MMOClient<?>> {
+	
 	private final SelectorThread<T> _selectorThread;
 	
 	private final Socket _socket;
@@ -49,8 +51,6 @@ public class MMOConnection<T extends MMOClient<?>>
 	
 	private final SelectionKey _selectionKey;
 	
-	// private SendablePacket<T> _closePacket;
-	
 	private ByteBuffer _readBuffer;
 	
 	private ByteBuffer _primaryWriteBuffer;
@@ -61,8 +61,7 @@ public class MMOConnection<T extends MMOClient<?>>
 	
 	private T _client;
 	
-	public MMOConnection(final SelectorThread<T> selectorThread, final Socket socket, final SelectionKey key, boolean tcpNoDelay)
-	{
+	public MMOConnection(SelectorThread<T> selectorThread, Socket socket, SelectionKey key, boolean tcpNoDelay) {
 		_selectorThread = selectorThread;
 		_socket = socket;
 		_address = socket.getInetAddress();
@@ -73,92 +72,70 @@ public class MMOConnection<T extends MMOClient<?>>
 		
 		_sendQueue = new NioNetStackList<>();
 		
-		try
-		{
+		try {
 			_socket.setTcpNoDelay(tcpNoDelay);
-		}
-		catch (SocketException e)
-		{
+		} catch (SocketException e) {
 			e.printStackTrace();
 		}
 	}
 	
-	final void setClient(final T client)
-	{
+	final void setClient(T client) {
 		_client = client;
 	}
 	
-	public final T getClient()
-	{
+	public final T getClient() {
 		return _client;
 	}
 	
-	public final void sendPacket(final SendablePacket<T> sp)
-	{
+	public final void sendPacket(SendablePacket<T> sp) {
 		sp._client = _client;
 		
-		if (_pendingClose)
-		{
+		if (_pendingClose) {
 			return;
 		}
 		
-		synchronized (getSendQueue())
-		{
+		synchronized (getSendQueue()) {
 			_sendQueue.addLast(sp);
 		}
 		
-		if (!_sendQueue.isEmpty())
-		{
-			try
-			{
+		if (!_sendQueue.isEmpty()) {
+			try {
 				_selectionKey.interestOps(_selectionKey.interestOps() | SelectionKey.OP_WRITE);
-			}
-			catch (CancelledKeyException e)
-			{
+			} catch (CancelledKeyException e) {
 				// ignore
 			}
 		}
 	}
 	
-	final SelectionKey getSelectionKey()
-	{
+	final SelectionKey getSelectionKey() {
 		return _selectionKey;
 	}
 	
-	public final InetAddress getInetAddress()
-	{
+	public final InetAddress getInetAddress() {
 		return _address;
 	}
 	
-	public final int getPort()
-	{
+	public final int getPort() {
 		return _port;
 	}
 	
-	final void close() throws IOException
-	{
+	final void close() throws IOException {
 		_socket.close();
 	}
 	
-	final int read(final ByteBuffer buf) throws IOException
-	{
+	final int read(ByteBuffer buf) throws IOException {
 		return _readableByteChannel.read(buf);
 	}
 	
-	final int write(final ByteBuffer buf) throws IOException
-	{
+	final int write(ByteBuffer buf) throws IOException {
 		return _writableByteChannel.write(buf);
 	}
 	
-	final void createWriteBuffer(final ByteBuffer buf)
-	{
-		if (_primaryWriteBuffer == null)
-		{
+	final void createWriteBuffer(ByteBuffer buf) {
+		if (_primaryWriteBuffer == null) {
 			_primaryWriteBuffer = _selectorThread.getPooledBuffer();
 			_primaryWriteBuffer.put(buf);
-		}
-		else
-		{
+		} else {
 			final ByteBuffer temp = _selectorThread.getPooledBuffer();
 			temp.put(buf);
 			
@@ -166,31 +143,25 @@ public class MMOConnection<T extends MMOClient<?>>
 			_primaryWriteBuffer.flip();
 			final int limit = _primaryWriteBuffer.limit();
 			
-			if (remaining >= _primaryWriteBuffer.remaining())
-			{
+			if (remaining >= _primaryWriteBuffer.remaining()) {
 				temp.put(_primaryWriteBuffer);
 				_selectorThread.recycleBuffer(_primaryWriteBuffer);
-				_primaryWriteBuffer = temp;
-			}
-			else
-			{
+			} else {
 				_primaryWriteBuffer.limit(remaining);
 				temp.put(_primaryWriteBuffer);
 				_primaryWriteBuffer.limit(limit);
 				_primaryWriteBuffer.compact();
 				_secondaryWriteBuffer = _primaryWriteBuffer;
-				_primaryWriteBuffer = temp;
 			}
+			_primaryWriteBuffer = temp;
 		}
 	}
 	
-	final boolean hasPendingWriteBuffer()
-	{
+	final boolean hasPendingWriteBuffer() {
 		return _primaryWriteBuffer != null;
 	}
 	
-	final void movePendingWriteBufferTo(final ByteBuffer dest)
-	{
+	final void movePendingWriteBufferTo(ByteBuffer dest) {
 		_primaryWriteBuffer.flip();
 		dest.put(_primaryWriteBuffer);
 		_selectorThread.recycleBuffer(_primaryWriteBuffer);
@@ -198,89 +169,65 @@ public class MMOConnection<T extends MMOClient<?>>
 		_secondaryWriteBuffer = null;
 	}
 	
-	final void setReadBuffer(final ByteBuffer buf)
-	{
+	final void setReadBuffer(ByteBuffer buf) {
 		_readBuffer = buf;
 	}
 	
-	final ByteBuffer getReadBuffer()
-	{
+	final ByteBuffer getReadBuffer() {
 		return _readBuffer;
 	}
 	
-	public final boolean isClosed()
-	{
+	public final boolean isClosed() {
 		return _pendingClose;
 	}
 	
-	final NioNetStackList<SendablePacket<T>> getSendQueue()
-	{
+	final NioNetStackList<SendablePacket<T>> getSendQueue() {
 		return _sendQueue;
 	}
 	
-	/*
-	 * final SendablePacket<T> getClosePacket() { return _closePacket; }
-	 */
-	
 	@SuppressWarnings("unchecked")
-	public final void close(final SendablePacket<T> sp)
-	{
-		
-		close(new SendablePacket[]
-		{
+	public final void close(SendablePacket<T> sp) {
+		close(new SendablePacket[] {
 			sp
 		});
 	}
 	
-	public final void close(final SendablePacket<T>[] closeList)
-	{
-		if (_pendingClose)
-		{
+	public final void close(SendablePacket<T>[] closeList) {
+		if (_pendingClose) {
 			return;
 		}
 		
-		synchronized (getSendQueue())
-		{
-			if (!_pendingClose)
-			{
+		synchronized (getSendQueue()) {
+			if (!_pendingClose) {
 				_pendingClose = true;
 				_sendQueue.clear();
-				for (SendablePacket<T> sp : closeList)
-				{
+				for (SendablePacket<T> sp : closeList) {
 					_sendQueue.addLast(sp);
 				}
 			}
 		}
 		
-		try
-		{
+		try {
 			_selectionKey.interestOps(_selectionKey.interestOps() & ~SelectionKey.OP_WRITE);
-		}
-		catch (CancelledKeyException e)
-		{
+		} catch (CancelledKeyException e) {
 			// ignore
 		}
 		
-		// _closePacket = sp;
 		_selectorThread.closeConnection(this);
 	}
 	
-	final void releaseBuffers()
-	{
-		if (_primaryWriteBuffer != null)
-		{
+	final void releaseBuffers() {
+		if (_primaryWriteBuffer != null) {
 			_selectorThread.recycleBuffer(_primaryWriteBuffer);
 			_primaryWriteBuffer = null;
 			
-			if (_secondaryWriteBuffer != null)
-			{
+			if (_secondaryWriteBuffer != null) {
 				_selectorThread.recycleBuffer(_secondaryWriteBuffer);
 				_secondaryWriteBuffer = null;
 			}
 		}
 		
-		if (_readBuffer != null)
-		{
+		if (_readBuffer != null) {
 			_selectorThread.recycleBuffer(_readBuffer);
 			_readBuffer = null;
 		}

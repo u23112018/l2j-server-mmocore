@@ -18,20 +18,13 @@
  */
 package com.l2jserver.mmocore;
 
-import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 
 /**
- * Abstract packet.
+ * Accept filter interface.
  * @author KenM
- * @param <T>
  */
-public abstract class AbstractPacket<T extends MMOClient<?>> {
+public interface AcceptFilter {
 	
-	protected ByteBuffer _buf;
-	
-	protected T _client;
-	
-	public final T getClient() {
-		return _client;
-	}
+	boolean accept(SocketChannel sc);
 }

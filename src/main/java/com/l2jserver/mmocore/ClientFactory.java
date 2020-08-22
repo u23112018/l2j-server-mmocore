@@ -18,20 +18,12 @@
  */
 package com.l2jserver.mmocore;
 
-import java.nio.ByteBuffer;
-
 /**
- * Abstract packet.
+ * Client factory interface.
  * @author KenM
  * @param <T>
  */
-public abstract class AbstractPacket<T extends MMOClient<?>> {
+public interface ClientFactory<T extends MMOClient<?>> {
 	
-	protected ByteBuffer _buf;
-	
-	protected T _client;
-	
-	public final T getClient() {
-		return _client;
-	}
+	T create(MMOConnection<T> con);
 }
